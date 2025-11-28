@@ -77,11 +77,11 @@ const APIConfig: React.FC = () => {
   
   // 获取已配置和未配置的大模型
   const getConfiguredModels = () => {
-    return configs.filter(config => config.apiKey && config.enabled);
+    return configs.filter(config => config.enabled);
   };
   
   const getUnconfiguredModels = () => {
-    return configs.filter(config => !config.apiKey || !config.enabled);
+    return configs.filter(config => !config.enabled);
   };
 
   // 检测Ollama是否在运行
@@ -114,27 +114,40 @@ const APIConfig: React.FC = () => {
   useEffect(() => {
     const loadConfigs = async () => {
       try {
+        let configsToSet = [...configs];
+        
         // 检查是否在Electron环境中
         if (window.electronAPI) {
           // @ts-ignore - electronAPI is exposed in preload.js
           const savedConfigs = await window.electronAPI.readEnvFile();
           if (savedConfigs) {
-            setConfigs(JSON.parse(savedConfigs));
+            configsToSet = JSON.parse(savedConfigs);
+          } else {
+            // 文件不存在，创建默认配置文件
+            await window.electronAPI.writeEnvFile(JSON.stringify(configsToSet));
           }
         } else {
           // 在开发模式下，使用localStorage
           const oldConfigs = localStorage.getItem('apiConfigs');
           if (oldConfigs) {
-            setConfigs(JSON.parse(oldConfigs));
+            configsToSet = JSON.parse(oldConfigs);
+          } else {
+            // localStorage中没有配置，保存默认配置
+            localStorage.setItem('apiConfigs', JSON.stringify(configsToSet));
           }
         }
+        
+        // 直接使用配置文件中的enabled状态，不自动计算
+        setConfigs(configsToSet);
       } catch (error) {
         console.error('Failed to load API configs:', error);
         // 尝试从localStorage加载旧配置
         const oldConfigs = localStorage.getItem('apiConfigs');
         if (oldConfigs) {
           try {
-            setConfigs(JSON.parse(oldConfigs));
+            const configsToSet = JSON.parse(oldConfigs);
+            // 直接使用配置文件中的enabled状态，不自动计算
+            setConfigs(configsToSet);
           } catch (parseError) {
             console.error('Failed to parse old API configs:', parseError);
           }
@@ -154,29 +167,30 @@ const APIConfig: React.FC = () => {
   }, [configs]);
 
   // 保存配置到配置源
-  const saveConfigs = async () => {
+  const saveConfigs = async (serviceType: 'online' | 'local') => {
     setIsSaving(true);
     try {
-      // 检查当前选中的服务配置是否完整
-      const currentConfig = selectedLocalService === AIService.Ollama 
+      // 根据serviceType确定要验证的服务
+      const currentConfig = serviceType === 'local' 
         ? configs.find(c => c.service === selectedLocalService)
         : configs.find(c => c.service === selectedOnlineService);
       
       if (currentConfig) {
         // 检查配置是否完整
         if (currentConfig.service !== AIService.Ollama && !currentConfig.apiKey) {
-          alert('请输入API密钥');
+          alert(`请为 ${getServiceName(currentConfig.service)} 输入API密钥`);
           setIsSaving(false);
           return;
         }
         
         if (!currentConfig.endpoint) {
-          alert('请输入端点URL');
+          alert(`请为 ${getServiceName(currentConfig.service)} 输入端点URL`);
           setIsSaving(false);
           return;
         }
       }
       
+      // 直接保存当前配置状态，不自动计算enabled
       // 检查是否在Electron环境中
       if (window.electronAPI) {
         // @ts-ignore - electronAPI is exposed in preload.js
@@ -212,17 +226,17 @@ const APIConfig: React.FC = () => {
   const getServiceName = (service: AIService) => {
     switch (service) {
       case AIService.Gemini:
-        return 'Google Gemini';
+        return 'Gemini';
       case AIService.OpenAI:
-        return 'OpenAI';
+        return 'ChatGPT';
       case AIService.Claude:
-        return 'Anthropic Claude';
+        return 'Claude';
       case AIService.Wenxin:
-        return '百度文心一言';
+        return '文心一言';
       case AIService.Tongyi:
-        return '阿里云通义千问';
+        return 'Qwen';
       case AIService.Doubao:
-        return '字节跳动豆包';
+        return '豆包';
       case AIService.Ollama:
         return 'Ollama';
       default:
@@ -360,7 +374,7 @@ const APIConfig: React.FC = () => {
                 {/* 保存按钮 */}
                 <div className="pt-2">
                   <button
-                    onClick={() => saveConfigs()}
+                    onClick={() => saveConfigs('online')}
                     disabled={isSaving}
                     className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -466,7 +480,7 @@ const APIConfig: React.FC = () => {
                 {/* 保存按钮 */}
                 <div className="pt-2">
                   <button
-                    onClick={() => saveConfigs()}
+                    onClick={() => saveConfigs('local')}
                     disabled={isSaving}
                     className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >

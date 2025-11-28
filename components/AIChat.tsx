@@ -14,7 +14,7 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
       {
           role: 'model',
-          content: `Hello! I've analyzed **${dataset.name}**. I can help you find insights, detect patterns, or summarize the data. What would you like to know?`,
+          content: `您好！我已经读取了 **${dataset.name}** 数据集。我可以帮助您发现数据中的见解、检测模式或总结数据。您想知道什么？`,
           timestamp: Date.now()
       }
   ]);
@@ -46,9 +46,9 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
         }
         
         if (configs) {
-          // 只包含已配置（apiKey不为空且enabled为true）的服务
+          // 只包含已配置（enabled为true）的服务
           const enabled = configs
-            .filter((config: any) => config.enabled && config.apiKey)
+            .filter((config: any) => config.enabled && (config.service === AIService.Ollama || config.apiKey))
             .map((config: any) => config.service);
           setEnabledServices(enabled);
           // 如果当前选择的服务未启用，切换到第一个启用的服务
@@ -139,13 +139,13 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
             >
               {enabledServices.map(service => (
                 <option key={service} value={service}>
-                  {service === AIService.Gemini && 'Google Gemini'}
-                  {service === AIService.OpenAI && 'OpenAI'}
-                  {service === AIService.Claude && 'Anthropic Claude'}
-                  {service === AIService.Wenxin && '百度文心一言'}
-                  {service === AIService.Tongyi && '阿里云通义千问'}
-                  {service === AIService.Doubao && '字节跳动豆包'}
-                  {service === AIService.Ollama && 'Ollama 本地模型'}
+                  {service === AIService.Gemini && 'Gemini'}
+                  {service === AIService.OpenAI && 'ChatGPT'}
+                  {service === AIService.Claude && 'Claude'}
+                  {service === AIService.Wenxin && '文心一言'}
+                  {service === AIService.Tongyi && 'Qwen'}
+                  {service === AIService.Doubao && '豆包'}
+                  {service === AIService.Ollama && 'Ollama'}
                 </option>
               ))}
             </select>

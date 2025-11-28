@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Dataset } from '../types';
 import { BookOpen, Brain, Smile, BarChart2, Tag } from 'lucide-react';
 
+
 // 简单的情感词典
 const sentimentDict = {
   // 积极词汇
@@ -20,17 +21,65 @@ const sentimentDict = {
   ])
 };
 
-// 简单的基于正则表达式的分词函数
-const cut = (text: string): string[] => {
-  // 简单的中文分词，基于标点符号和空格分割
-  const tokens = text
-    .split(/[\s\p{P}\p{S}]+/u)
-    .filter(token => token.trim() !== '');
-  return tokens;
-};
+// 中文停用词列表
+const stopwords = new Set([
+  '的', '了', '和', '是', '就', '都', '而', '及', '与', '着', '或', '一个', '这个', '那个', '这些', '那些',
+  '在', '上', '下', '左', '右', '前', '后', '里', '外', '中', '内', '间', '之', '以', '于', '为',
+  '对于', '关于', '至于', '由于', '因为', '所以', '因此', '然而', '但是', '可是', '不过', '虽然', '尽管',
+  '如果', '假如', '假设', '倘若', '要是', '只要', '只有', '除非', '否则', '不管', '无论', '即使', '即便',
+  '还是', '或者', '并且', '而且', '甚至', '更', '最', '很', '非常', '太', '极', '极其', '格外', '特别',
+  '稍微', '略微', '比较', '相当', '几乎', '差不多', '大约', '大概', '左右', '上下', '前后', '多少',
+  '一些', '有些', '若干', '许多', '不少', '大量', '众多', '多数', '少数', '部分', '全部', '所有',
+  '一切', '任何', '每', '各', '每个', '各个', '各自', '其他', '另外', '还有', '以及', '等等', '诸如此类',
+  '例如', '比如', '像', '如', '比如', '诸如', '例如', '就是', '即', '乃', '则', '却', '才', '也', '又',
+  '再', '还', '仍', '仍然', '已', '已经', '曾', '曾经', '刚', '刚刚', '正', '正在', '将', '将要', '会',
+  '能', '能够', '可以', '可能', '应该', '应当', '必须', '不得不', '得', '要', '想要', '希望', '愿意',
+  '喜欢', '爱', '恨', '讨厌', '想', '认为', '觉得', '感到', '以为', '知道', '了解', '明白', '懂得',
+  '认识', '记住', '忘记', '记得', '想起', '看到', '听见', '闻到', '尝到', '摸到', '感觉到', '认为',
+  '觉得', '以为', '知道', '了解', '明白', '懂得', '认识', '记住', '忘记', '记得', '想起', '看到',
+  '听见', '闻到', '尝到', '摸到', '感觉到', '是', '不是', '有', '没有', '存在', '不存在', '出现', '消失',
+  '发生', '产生', '形成', '变成', '成为', '发展', '变化', '改变', '转变', '转换', '转移', '移动', '运动',
+  '行动', '行为', '活动', '动作', '做', '干', '搞', '进行', '执行', '实施', '实行', '完成', '结束', '停止',
+  '开始', '启动', '发动', '出发', '到达', '来', '去', '走', '跑', '跳', '飞', '爬', '游', '行', '进',
+  '出', '入', '进', '出', '上', '下', '左', '右', '前', '后', '里', '外', '中', '内', '间', '之', '以',
+  '于', '为', '对于', '关于', '至于', '由于', '因为', '所以', '因此', '然而', '但是', '可是', '不过',
+  '虽然', '尽管', '如果', '假如', '假设', '倘若', '要是', '只要', '只有', '除非', '否则', '不管', '无论',
+  '即使', '即便', '还是', '或者', '并且', '而且', '甚至', '更', '最', '很', '非常', '太', '极', '极其',
+  '格外', '特别', '稍微', '略微', '比较', '相当', '几乎', '差不多', '大约', '大概', '左右', '上下',
+  '前后', '多少', '一些', '有些', '若干', '许多', '不少', '大量', '众多', '多数', '少数', '部分',
+  '全部', '所有', '一切', '任何', '每', '各', '每个', '各个', '各自', '其他', '另外', '还有', '以及',
+  '等等', '诸如此类', '例如', '比如', '像', '如', '比如', '诸如', '例如', '就是', '即', '乃', '则',
+  '却', '才', '也', '又', '再', '还', '仍', '仍然', '已', '已经', '曾', '曾经', '刚', '刚刚', '正',
+  '正在', '将', '将要', '会', '能', '能够', '可以', '可能', '应该', '应当', '必须', '不得不', '得',
+  '要', '想要', '希望', '愿意', '喜欢', '爱', '恨', '讨厌', '想', '认为', '觉得', '感到', '以为',
+  '知道', '了解', '明白', '懂得', '认识', '记住', '忘记', '记得', '想起', '看到', '听见', '闻到',
+  '尝到', '摸到', '感觉到', '是', '不是', '有', '没有', '存在', '不存在', '出现', '消失', '发生',
+  '产生', '形成', '变成', '成为', '发展', '变化', '改变', '转变', '转换', '转移', '移动', '运动',
+  '行动', '行为', '活动', '动作', '做', '干', '搞', '进行', '执行', '实施', '实行', '完成', '结束',
+  '停止', '开始', '启动', '发动', '出发', '到达', '来', '去', '走', '跑', '跳', '飞', '爬', '游',
+  '行', '进', '出', '入', '进', '出', '上', '下', '左', '右', '前', '后', '里', '外', '中', '内',
+  '间', '之', '以', '于', '为', '对于', '关于', '至于', '由于', '因为', '所以', '因此', '然而',
+  '但是', '可是', '不过', '虽然', '尽管', '如果', '假如', '假设', '倘若', '要是', '只要', '只有',
+  '除非', '否则', '不管', '无论', '即使', '即便', '还是', '或者', '并且', '而且', '甚至', '更',
+  '最', '很', '非常', '太', '极', '极其', '格外', '特别', '稍微', '略微', '比较', '相当', '几乎',
+  '差不多', '大约', '大概', '左右', '上下', '前后', '多少', '一些', '有些', '若干', '许多', '不少',
+  '大量', '众多', '多数', '少数', '部分', '全部', '所有', '一切', '任何', '每', '各', '每个',
+  '各个', '各自', '其他', '另外', '还有', '以及', '等等', '诸如此类', '例如', '比如', '像', '如',
+  '比如', '诸如', '例如', '就是', '即', '乃', '则', '却', '才', '也', '又', '再', '还', '仍',
+  '仍然', '已', '已经', '曾', '曾经', '刚', '刚刚', '正', '正在', '将', '将要', '会', '能', '能够',
+  '可以', '可能', '应该', '应当', '必须', '不得不', '得', '要', '想要', '希望', '愿意', '喜欢',
+  '爱', '恨', '讨厌', '想', '认为', '觉得', '感到', '以为', '知道', '了解', '明白', '懂得', '认识',
+  '记住', '忘记', '记得', '想起', '看到', '听见', '闻到', '尝到', '摸到', '感觉到'
+]);
 
-interface TextAnalysisProps {
-  dataset: Dataset;
+// 分词结果接口
+interface TokenizationResult {
+  original: string;
+  tokens: string[];
+  filteredTokens: string[];
+  tokenCount: number;
+  filteredTokenCount: number;
+  keywords?: Array<{word: string, weight: number}>;
 }
 
 // 情感分析结果接口
@@ -38,6 +87,7 @@ interface SentimentResult {
   score: number; // -1 到 1 之间的情感分数
   label: string; // 情感标签：positive, negative, neutral
   confidence: number; // 置信度
+  detailedResults: any[];
 }
 
 // 主题分析结果接口
@@ -47,13 +97,9 @@ interface TopicResult {
   weight: number; // 主题权重
 }
 
-// 分词结果接口
-interface TokenizationResult {
-  original: string;
-  tokens: string[];
-  filteredTokens: string[];
-  tokenCount: number;
-  filteredTokenCount: number;
+// TextAnalysis组件属性接口
+interface TextAnalysisProps {
+  dataset: Dataset;
 }
 
 const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
@@ -67,122 +113,99 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
   // 提取文本列
   const textColumns = dataset.columns.filter(col => col.type === 'String');
 
-  // 中文停用词列表
-  const stopwords = new Set([
-    '的', '了', '和', '是', '就', '都', '而', '及', '与', '着', '或', '一个', '这个', '那个', '这些', '那些',
-    '在', '上', '下', '左', '右', '前', '后', '里', '外', '中', '内', '间', '之', '以', '于', '为',
-    '对于', '关于', '至于', '由于', '因为', '所以', '因此', '然而', '但是', '可是', '不过', '虽然', '尽管',
-    '如果', '假如', '假设', '倘若', '要是', '只要', '只有', '除非', '否则', '不管', '无论', '即使', '即便',
-    '还是', '或者', '并且', '而且', '甚至', '更', '最', '很', '非常', '太', '极', '极其', '格外', '特别',
-    '稍微', '略微', '比较', '相当', '几乎', '差不多', '大约', '大概', '左右', '上下', '前后', '多少',
-    '一些', '有些', '若干', '许多', '不少', '大量', '众多', '多数', '少数', '部分', '全部', '所有',
-    '一切', '任何', '每', '各', '每个', '各个', '各自', '其他', '另外', '还有', '以及', '等等', '诸如此类',
-    '例如', '比如', '像', '如', '比如', '诸如', '例如', '就是', '即', '乃', '则', '却', '才', '也', '又',
-    '再', '还', '仍', '仍然', '已', '已经', '曾', '曾经', '刚', '刚刚', '正', '正在', '将', '将要', '会',
-    '能', '能够', '可以', '可能', '应该', '应当', '必须', '不得不', '得', '要', '想要', '希望', '愿意',
-    '喜欢', '爱', '恨', '讨厌', '想', '认为', '觉得', '感到', '以为', '知道', '了解', '明白', '懂得',
-    '认识', '记住', '忘记', '记得', '想起', '看到', '听见', '闻到', '尝到', '摸到', '感觉到', '认为',
-    '觉得', '以为', '知道', '了解', '明白', '懂得', '认识', '记住', '忘记', '记得', '想起', '看到',
-    '听见', '闻到', '尝到', '摸到', '感觉到', '是', '不是', '有', '没有', '存在', '不存在', '出现', '消失',
-    '发生', '产生', '形成', '变成', '成为', '发展', '变化', '改变', '转变', '转换', '转移', '移动', '运动',
-    '行动', '行为', '活动', '动作', '做', '干', '搞', '进行', '执行', '实施', '实行', '完成', '结束', '停止',
-    '开始', '启动', '发动', '出发', '到达', '来', '去', '走', '跑', '跳', '飞', '爬', '游', '行', '进',
-    '出', '入', '进', '出', '上', '下', '左', '右', '前', '后', '里', '外', '中', '内', '间', '之', '以',
-    '于', '为', '对于', '关于', '至于', '由于', '因为', '所以', '因此', '然而', '但是', '可是', '不过',
-    '虽然', '尽管', '如果', '假如', '假设', '倘若', '要是', '只要', '只有', '除非', '否则', '不管', '无论',
-    '即使', '即便', '还是', '或者', '并且', '而且', '甚至', '更', '最', '很', '非常', '太', '极', '极其',
-    '格外', '特别', '稍微', '略微', '比较', '相当', '几乎', '差不多', '大约', '大概', '左右', '上下',
-    '前后', '多少', '一些', '有些', '若干', '许多', '不少', '大量', '众多', '多数', '少数', '部分',
-    '全部', '所有', '一切', '任何', '每', '各', '每个', '各个', '各自', '其他', '另外', '还有', '以及',
-    '等等', '诸如此类', '例如', '比如', '像', '如', '比如', '诸如', '例如', '就是', '即', '乃', '则',
-    '却', '才', '也', '又', '再', '还', '仍', '仍然', '已', '已经', '曾', '曾经', '刚', '刚刚', '正',
-    '正在', '将', '将要', '会', '能', '能够', '可以', '可能', '应该', '应当', '必须', '不得不', '得',
-    '要', '想要', '希望', '愿意', '喜欢', '爱', '恨', '讨厌', '想', '认为', '觉得', '感到', '以为',
-    '知道', '了解', '明白', '懂得', '认识', '记住', '忘记', '记得', '想起', '看到', '听见', '闻到',
-    '尝到', '摸到', '感觉到', '是', '不是', '有', '没有', '存在', '不存在', '出现', '消失', '发生',
-    '产生', '形成', '变成', '成为', '发展', '变化', '改变', '转变', '转换', '转移', '移动', '运动',
-    '行动', '行为', '活动', '动作', '做', '干', '搞', '进行', '执行', '实施', '实行', '完成', '结束',
-    '停止', '开始', '启动', '发动', '出发', '到达', '来', '去', '走', '跑', '跳', '飞', '爬', '游',
-    '行', '进', '出', '入', '进', '出', '上', '下', '左', '右', '前', '后', '里', '外', '中', '内',
-    '间', '之', '以', '于', '为', '对于', '关于', '至于', '由于', '因为', '所以', '因此', '然而',
-    '但是', '可是', '不过', '虽然', '尽管', '如果', '假如', '假设', '倘若', '要是', '只要', '只有',
-    '除非', '否则', '不管', '无论', '即使', '即便', '还是', '或者', '并且', '而且', '甚至', '更',
-    '最', '很', '非常', '太', '极', '极其', '格外', '特别', '稍微', '略微', '比较', '相当', '几乎',
-    '差不多', '大约', '大概', '左右', '上下', '前后', '多少', '一些', '有些', '若干', '许多', '不少',
-    '大量', '众多', '多数', '少数', '部分', '全部', '所有', '一切', '任何', '每', '各', '每个',
-    '各个', '各自', '其他', '另外', '还有', '以及', '等等', '诸如此类', '例如', '比如', '像', '如',
-    '比如', '诸如', '例如', '就是', '即', '乃', '则', '却', '才', '也', '又', '再', '还', '仍',
-    '仍然', '已', '已经', '曾', '曾经', '刚', '刚刚', '正', '正在', '将', '将要', '会', '能', '能够',
-    '可以', '可能', '应该', '应当', '必须', '不得不', '得', '要', '想要', '希望', '愿意', '喜欢',
-    '爱', '恨', '讨厌', '想', '认为', '觉得', '感到', '以为', '知道', '了解', '明白', '懂得', '认识',
-    '记住', '忘记', '记得', '想起', '看到', '听见', '闻到', '尝到', '摸到', '感觉到'
-  ]);
-
-  // 分词和去除停用词
-  const tokenizeText = (text: string): TokenizationResult => {
-    // 使用Jieba-js分词
-    const tokens = cut(text);
-    
-    // 去除停用词和空字符串
-    const filteredTokens = tokens
-      .filter(token => token.trim() !== '')
-      .filter(token => !stopwords.has(token));
-    
-    return {
-      original: text,
-      tokens,
-      filteredTokens,
-      tokenCount: tokens.length,
-      filteredTokenCount: filteredTokens.length
-    };
+  // 使用jieba分词和去除停用词
+  const tokenizeText = async (text: string): Promise<TokenizationResult> => {
+    try {
+      // 使用jieba进行分词（通过Electron IPC调用主进程）
+      const tokens = await window.electronAPI.cutText(text);
+      
+      // 提取关键词
+      const keywords = await window.electronAPI.extractKeywords(text, 5);
+      
+      // 去除停用词和空字符串
+      const filteredTokens = tokens
+        .filter(token => token.trim() !== '')
+        .filter(token => !stopwords.has(token))
+        .filter(token => token.length > 1); // 过滤单字
+        
+      return {
+        original: text,
+        tokens,
+        filteredTokens,
+        tokenCount: tokens.length,
+        filteredTokenCount: filteredTokens.length,
+        keywords
+      };
+    } catch (error) {
+      console.error('分词失败:', error);
+      // 降级使用原有的简单分词
+      const tokens = text
+        .split(/([\s\p{P}\p{S}]+|(?<=\p{Script=Han})(?=\p{Script=Latin})|(?<=\p{Script=Latin})(?=\p{Script=Han})|(?<=\d)(?=\D)|(?<=\D)(?=\d))/u)
+        .filter(token => token.trim() !== '');
+      
+      const filteredTokens = tokens
+        .filter(token => token.trim() !== '')
+        .filter(token => !stopwords.has(token));
+        
+      return {
+        original: text,
+        tokens,
+        filteredTokens,
+        tokenCount: tokens.length,
+        filteredTokenCount: filteredTokens.length
+      };
+    }
   };
 
-  // 基于分词结果的LDA主题挖掘
-  const performTopicAnalysis = (texts: string[]) => {
+  // 基于jieba分词结果的LDA主题挖掘
+  const performTopicAnalysis = async (texts: string[]) => {
     // 对所有文本进行分词和去除停用词
-    const tokenizedTexts = texts.map(text => {
-      const tokenResult = tokenizeText(text);
-      return tokenResult.filteredTokens;
-    });
+    const tokenizedTexts = await Promise.all(
+      texts.map(text => tokenizeText(text))
+    );
 
     // 统计词频
     const wordFrequency = new Map<string, number>();
-    tokenizedTexts.forEach(tokens => {
-      tokens.forEach(token => {
+    tokenizedTexts.forEach(tokenResult => {
+      tokenResult.filteredTokens.forEach(token => {
         wordFrequency.set(token, (wordFrequency.get(token) || 0) + 1);
       });
     });
 
+    // 使用jieba提取全局关键词
+    const allText = texts.join('。');
+    const globalKeywords = await window.electronAPI.extractKeywords(allText, 20);
+    
     // 按词频排序，取前20个高频词
     const sortedWords = Array.from(wordFrequency.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20);
 
-    // 简单模拟LDA主题分析，将高频词分配到不同主题
+    // 使用jieba关键词作为主题
     const mockTopics: TopicResult[] = [
       {
         topic: 1,
-        keywords: sortedWords.slice(0, 5).map(word => word[0]),
+        keywords: globalKeywords.slice(0, 5).map(item => item.word),
         weight: 0.35
       },
       {
         topic: 2,
-        keywords: sortedWords.slice(5, 10).map(word => word[0]),
+        keywords: globalKeywords.slice(5, 10).map(item => item.word),
         weight: 0.25
       },
       {
         topic: 3,
-        keywords: sortedWords.slice(10, 15).map(word => word[0]),
+        keywords: globalKeywords.slice(10, 15).map(item => item.word),
         weight: 0.20
       },
       {
         topic: 4,
-        keywords: sortedWords.slice(15, 20).map(word => word[0]),
+        keywords: globalKeywords.slice(15, 20).map(item => item.word),
         weight: 0.15
       },
       {
         topic: 5,
-        keywords: sortedWords.slice(0, 5).map(word => word[0]).reverse(),
+        keywords: sortedWords.slice(0, 5).map(word => word[0]),
         weight: 0.05
       }
     ];
@@ -190,36 +213,39 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
     return mockTopics;
   };
 
-  // 基于情感词典的情感分析
-  const performSentimentAnalysis = (texts: string[]) => {
+  // 基于分词结果的情感分析
+  const performSentimentAnalysis = async (texts: string[]) => {
     // 对所有文本进行情感分析
-    const results = texts.map(text => {
-      // 先分词和去除停用词
-      const tokenResult = tokenizeText(text);
-      const tokens = tokenResult.filteredTokens;
-      
-      // 统计情感词汇
-      let positiveCount = 0;
-      let negativeCount = 0;
-      
-      tokens.forEach(token => {
-        if (sentimentDict.positive.has(token)) {
-          positiveCount++;
-        } else if (sentimentDict.negative.has(token)) {
-          negativeCount++;
-        }
-      });
-      
-      // 计算情感得分
-      const score = (positiveCount - negativeCount) / Math.max(tokens.length, 1);
-      
-      return {
-        score,
-        positiveCount,
-        negativeCount,
-        tokenCount: tokens.length
-      };
-    });
+    const results = await Promise.all(
+      texts.map(async text => {
+        // 使用jieba分词
+        const tokenResult = await tokenizeText(text);
+        const tokens = tokenResult.filteredTokens;
+        
+        // 统计情感词汇
+        let positiveCount = 0;
+        let negativeCount = 0;
+        
+        tokens.forEach(token => {
+          if (sentimentDict.positive.has(token)) {
+            positiveCount++;
+          } else if (sentimentDict.negative.has(token)) {
+            negativeCount++;
+          }
+        });
+        
+        // 计算情感得分
+        const score = (positiveCount - negativeCount) / Math.max(tokens.length, 1);
+        
+        return {
+          score,
+          positiveCount,
+          negativeCount,
+          tokenCount: tokens.length,
+          keywords: tokenResult.keywords
+        };
+      })
+    );
 
     // 计算平均情感得分
     const totalScore = results.reduce((sum, result) => sum + result.score, 0);
@@ -247,32 +273,51 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
   };
 
   // 执行分析
-  const handleAnalyze = () => {
-    if (!selectedColumn) return;
-
+  const handleAnalyzeClick = async () => {
+    if (!selectedColumn) {
+      alert('请选择要分析的文本列');
+      return;
+    }
+    
     setIsAnalyzing(true);
     
-    // 提取文本数据
-    const texts = dataset.rows
-      .map(row => row[selectedColumn]?.toString() || '')
-      .filter(text => text.trim() !== '');
-
-    // 根据分析类型执行不同的分析
-    setTimeout(() => {
+    try {
+      // 提取文本数据
+      const texts = dataset.rows
+        .map(row => row[selectedColumn]?.toString() || '')
+        .filter(text => text.trim() !== '');
+      
+      if (texts.length === 0) {
+        alert('所选列中没有有效文本数据');
+        setIsAnalyzing(false);
+        return;
+      }
+      
+      // 对所有文本进行分词和去除停用词
+      const tokenResults = await Promise.all(
+        texts.map(text => tokenizeText(text))
+      );
+      setTokenizationResults(tokenResults);
+      
+      // 根据分析类型执行不同的分析
       let result;
       if (analysisType === 'sentiment') {
-        result = performSentimentAnalysis(texts);
+        result = await performSentimentAnalysis(texts);
       } else {
-        result = performTopicAnalysis(texts);
+        result = await performTopicAnalysis(texts);
       }
       
       setResults(result);
+    } catch (error) {
+      console.error('Analysis error:', error);
+      alert('分析过程中发生错误，请重试');
+    } finally {
       setIsAnalyzing(false);
-    }, 1000);
+    }
   };
 
   // 渲染情感分析结果
-  const renderSentimentResult = (result: any) => {
+  const renderSentimentResult = (result: SentimentResult) => {
     const getSentimentColor = (label: string) => {
       switch (label) {
         case 'positive': return 'text-green-600';
@@ -390,7 +435,7 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
   const renderTopicResult = (topics: TopicResult[]) => {
     return (
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h4 className="text-lg font-semibold text-slate-700 mb-6">LDA主题挖掘结果</h4>
+        <h4 className="text-lg font-semibold text-slate-700 mb-6">主题挖掘结果</h4>
         
         <div className="space-y-6">
           {topics.map((topic) => (
@@ -472,35 +517,10 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
     );
   };
 
-  // 执行分析
-  const handleAnalyzeClick = () => {
-    if (!selectedColumn) {
-      alert('请选择要分析的文本列');
-      return;
-    }
-    
-    setIsAnalyzing(true);
-    
-    // 提取文本数据
-    const texts = dataset.rows
-      .map(row => row[selectedColumn]?.toString() || '')
-      .filter(text => text.trim() !== '');
-    
-    // 对所有文本进行分词和去除停用词
-    const tokenResults = texts.map(text => tokenizeText(text));
-    setTokenizationResults(tokenResults);
-    
-    // 根据分析类型执行不同的分析
-    if (analysisType === 'sentiment') {
-      const result = performSentimentAnalysis(texts);
-      setResults(result);
-    } else {
-      const result = performTopicAnalysis(texts);
-      setResults(result);
-    }
-    
-    setIsAnalyzing(false);
-  };
+  // 定义TextAnalysisProps接口
+  interface TextAnalysisProps {
+    dataset: Dataset;
+  }
 
   return (
     <div className="space-y-6">
@@ -562,7 +582,7 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
             ) : (
               <>
                 <BarChart2 size={16} />
-                <span>执行分析</span>
+                <span>Jieba分词</span>
               </>
             )}
           </button>
@@ -574,7 +594,7 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center">
             <Tag size={18} className="mr-2" />
-            分词结果
+            Jieba分词结果
           </h3>
           
           <div className="space-y-4">
@@ -592,10 +612,10 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
                       原始文本
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      分词结果
+                      Jieba分词结果
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      去停用词后
+                      关键词提取
                     </th>
                   </tr>
                 </thead>
@@ -609,7 +629,7 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
                         {result.tokens.join(' / ')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                        {result.filteredTokens.join(' / ')}
+                        {result.keywords ? result.keywords.map(k => k.word).join(' / ') : 'N/A'}
                       </td>
                     </tr>
                   ))}
@@ -643,6 +663,7 @@ const TextAnalysis: React.FC<TextAnalysisProps> = ({ dataset }) => {
           <BookOpen size={48} className="mx-auto text-slate-300 mb-4" />
           <h4 className="text-lg font-semibold text-slate-700 mb-2">暂无分析结果</h4>
           <p className="text-slate-500 mb-4">选择文本列并点击执行分析按钮开始分析</p>
+          <p className="text-slate-400 text-sm">使用Jieba分词库进行更精准的中文分词和关键词提取</p>
         </div>
       )}
     </div>

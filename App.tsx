@@ -106,7 +106,7 @@ function App() {
 
         {/* Content Area */}
         <div className="flex-1 overflow-auto p-6 md:p-8">
-            <div className="max-w-7xl mx-auto h-full flex flex-col">
+            <div className="max-w-full mx-auto h-full flex flex-col">
                 
                 {/* View Title */}
                 {currentView !== AppView.Upload && (

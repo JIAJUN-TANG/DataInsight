@@ -5,7 +5,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   readEnvFile: () => ipcRenderer.invoke('read-env-file'),
   writeEnvFile: (data) => ipcRenderer.invoke('write-env-file', data),
-  checkEnvFile: () => ipcRenderer.invoke('check-env-file')
+  checkEnvFile: () => ipcRenderer.invoke('check-env-file'),
+  cutText: (text) => ipcRenderer.invoke('cut-text', text),
+  extractKeywords: (text, topN = 5) => ipcRenderer.invoke('extract-keywords', text, topN)
 });
 
 window.addEventListener('DOMContentLoaded', () => {
