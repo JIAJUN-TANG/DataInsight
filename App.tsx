@@ -17,23 +17,26 @@ function App() {
     setCurrentView(AppView.Data);
   };
 
-  const NavButton = ({ view, icon: Icon, label }: { view: AppView; icon: React.ElementType; label: string }) => (
-    <button
-      onClick={() => setCurrentView(view)}
-      disabled={!dataset && view !== AppView.Upload}
-      className={`
-        flex items-center space-x-3 px-4 py-3 rounded-lg w-full transition-all duration-200
-        ${currentView === view 
-          ? 'bg-indigo-600 text-white shadow-md' 
-          : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-        }
-        ${!dataset && view !== AppView.Upload ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
-      `}
-    >
-      <Icon size={20} />
-      <span className="font-medium">{label}</span>
-    </button>
-  );
+  const NavButton = ({ view, icon: Icon, label }: { view: AppView; icon: React.ElementType; label: string }) => {
+    const isDisabled = !dataset && view !== AppView.Upload && view !== AppView.APIConfig;
+    return (
+      <button
+        onClick={() => setCurrentView(view)}
+        disabled={isDisabled}
+        className={`
+          flex items-center space-x-3 px-4 py-3 rounded-lg w-full transition-all duration-200
+          ${currentView === view 
+            ? 'bg-indigo-600 text-white shadow-md' 
+            : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+          }
+          ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
+        `}
+      >
+        <Icon size={20} />
+        <span className="font-medium">{label}</span>
+      </button>
+    );
+  };
 
   return (
     <div className="flex h-screen bg-slate-100">
@@ -64,11 +67,28 @@ function App() {
 
         {dataset && (
           <div className="p-4 bg-slate-800/50 m-4 rounded-xl border border-slate-700">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">当前数据集</h4>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">当前数据集</h4>
             <p className="text-sm font-medium text-white truncate" title={dataset.name}>{dataset.name}</p>
             <p className="text-xs text-slate-400 mt-1">{dataset.rowCount.toLocaleString()} 行 • {dataset.columns.length} 列</p>
           </div>
         )}
+        
+        {/* 检查更新按钮 */}
+        <div className="p-4 border-t border-slate-800">
+          <button
+            onClick={() => {
+              // @ts-ignore - electronAPI is exposed from preload.js
+              window.electronAPI?.checkForUpdates?.();
+            }}
+            className="flex items-center space-x-2 px-4 py-2 w-full bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span className="text-sm">检查更新</span>
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
@@ -156,6 +176,7 @@ function App() {
             <button disabled={!dataset} onClick={() => setCurrentView(AppView.Visualize)} className={`p-2 rounded ${currentView === AppView.Visualize ? 'text-indigo-600' : 'text-slate-400'}`}><BarChart2/></button>
             <button disabled={!dataset} onClick={() => setCurrentView(AppView.TextAnalysis)} className={`p-2 rounded ${currentView === AppView.TextAnalysis ? 'text-indigo-600' : 'text-slate-400'}`}><BookOpen/></button>
             <button disabled={!dataset} onClick={() => setCurrentView(AppView.AI)} className={`p-2 rounded ${currentView === AppView.AI ? 'text-indigo-600' : 'text-slate-400'}`}><MessageSquareText/></button>
+            <button onClick={() => setCurrentView(AppView.APIConfig)} className={`p-2 rounded ${currentView === AppView.APIConfig ? 'text-indigo-600' : 'text-slate-400'}`}><Key/></button>
          </div>
 
       </main>
