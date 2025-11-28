@@ -2,6 +2,8 @@
 
 DataInsight 是一个强大的 AI 数据分析平台，帮助用户轻松上传、预览、分析和可视化数据，发现数据中的隐藏模式和洞察。
 
+**本项目使用了Google AI Studio（Gemini 3 Pro Preview）模型进行概念生成。**
+
 ## 主要功能
 
 ### 📊 数据处理
@@ -33,27 +35,6 @@ DataInsight 是一个强大的 AI 数据分析平台，帮助用户轻松上传�
 - **本地存储**：API 密钥安全存储在浏览器本地
 - **灵活切换**：可以随时切换使用的 AI 服务
 - **状态管理**：支持启用/禁用特定 AI 服务
-
-## 技术栈
-
-### 前端
-- **框架**：React 18
-- **语言**：TypeScript
-- **构建工具**：Vite
-- **样式**：Tailwind CSS
-- **图标**：Lucide React
-- **图表库**：Recharts
-- **Markdown**：ReactMarkdown
-
-### AI 服务
-- **Google Gemini**：用于 AI 数据分析
-- **OpenAI**：支持 ChatGPT 系列模型
-- **Anthropic Claude**：支持 Claude 系列模型
-
-### 数据处理
-- **文件解析**：支持 CSV、Excel 等格式
-- **数据类型检测**：自动检测数据类型
-- **统计分析**：基本统计信息计算
 
 ## 快速开始
 
@@ -175,7 +156,7 @@ DataInsight/
 如有任何问题或建议，欢迎通过以下方式联系：
 
 - GitHub Issues：[https://github.com/JIAJUN-TANG/DataInsight/issues](https://github.com/JIAJUN-TANG/DataInsight/issues)
-- 电子邮件：[your-email@example.com](mailto:your-email@example.com)
+- 电子邮件：[jiajuntang1101@smail.nju.edu.cn](mailto:jiajuntang1101@smail.nju.edu.cn)
 
 ---
 
