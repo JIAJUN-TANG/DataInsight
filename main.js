@@ -34,35 +34,15 @@ const createWindow = async () => {
   });
 
   // 在开发模式下使用vite服务器，生产模式下加载dist目录
-  const isDev = process.env.NODE_ENV === 'development';
+  // 使用 app.isPackaged 来判断应用是否被打包
+  const isDev = !app.isPackaged;
   
-  // 修复生产模式下的路径问题
-  let url;
+  // 简化路径处理，使用 Electron 提供的 loadFile 方法
   if (isDev) {
-    url = 'http://localhost:3000';
+    await mainWindow.loadURL('http://localhost:3000');
   } else {
-    // 确保使用正确的绝对路径格式
-    const indexPath = path.join(__dirname, 'dist', 'index.html');
-    url = `file://${indexPath}`;
-  }
-  
-  // 检查dist目录下的文件
-  const fsSync = await import('fs');
-  const distDir = path.join(__dirname, 'dist');
-  try {
-    const files = fsSync.readdirSync(distDir);
-    console.log('Files in dist directory:', files);
-    
-    // 检查assets目录
-    const assetsDir = path.join(distDir, 'assets');
-    if (fsSync.existsSync(assetsDir)) {
-      const assetsFiles = fsSync.readdirSync(assetsDir);
-      console.log('Files in assets directory:', assetsFiles);
-    } else {
-      console.error('Assets directory does not exist!');
-    }
-  } catch (err) {
-    console.error('Error reading dist directory:', err);
+    // 使用 loadFile 方法，这是 Electron 推荐的加载本地文件的方式
+    await mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
   
   // 添加更多调试信息
@@ -73,8 +53,6 @@ const createWindow = async () => {
       console.log('Render process loaded');
     `);
   });
-  
-  mainWindow.loadURL(url);
   
   // 监听页面加载失败事件
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
