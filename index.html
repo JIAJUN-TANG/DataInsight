@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DataInsight</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
       /* Custom scrollbar for webkit */
       ::-webkit-scrollbar {
@@ -21,24 +20,13 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #94a3b8; 
       }
+      
+      #root {
+        width: 100%;
+        height: 100vh;
+      }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.0",
-    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
-    "xlsx": "https://aistudiocdn.com/xlsx@^0.18.5",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-    "papaparse": "https://aistudiocdn.com/papaparse@^5.5.3",
-    "sql.js": "https://esm.sh/sql.js@1.11.0"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
+    <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
 </head>
   <body class="bg-slate-50 text-slate-900 font-sans antialiased">
     <div id="root"></div>
@@ -47,6 +35,7 @@
       console.log('DOM loaded successfully');
       console.log('Root element:', document.getElementById('root'));
     </script>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <!-- Vite 入口文件引用 -->
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

@@ -217,16 +217,14 @@ const APIConfig: React.FC = () => {
         return 'OpenAI';
       case AIService.Claude:
         return 'Anthropic Claude';
-      // 国内大模型
       case AIService.Wenxin:
         return '百度文心一言';
       case AIService.Tongyi:
         return '阿里云通义千问';
       case AIService.Doubao:
         return '字节跳动豆包';
-      // 本地模型
       case AIService.Ollama:
-        return 'Ollama 本地模型';
+        return 'Ollama';
       default:
         return service;
     }

@@ -10,27 +10,22 @@ const { autoUpdater } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
 try {
   if (await import('electron-squirrel-startup')) {
     app.quit();
   }
 } catch (error) {
-  // Ignore if electron-squirrel-startup is not available
 }
 
-// Configure autoUpdater logging
 autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
 
-const createWindow = () => {
-  // Create the browser window.
+const createWindow = async () => {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // 修复contextBridge错误，启用contextIsolation
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
@@ -40,16 +35,91 @@ const createWindow = () => {
 
   // 在开发模式下使用vite服务器，生产模式下加载dist目录
   const isDev = process.env.NODE_ENV === 'development';
-  const url = isDev 
-    ? 'http://localhost:3000' 
-    : `file://${path.join(__dirname, 'dist/index.html')}`;
+  
+  // 修复生产模式下的路径问题
+  let url;
+  if (isDev) {
+    url = 'http://localhost:3000';
+  } else {
+    // 确保使用正确的绝对路径格式
+    const indexPath = path.join(__dirname, 'dist', 'index.html');
+    url = `file://${indexPath}`;
+  }
+  
+  // 检查dist目录下的文件
+  const fsSync = await import('fs');
+  const distDir = path.join(__dirname, 'dist');
+  try {
+    const files = fsSync.readdirSync(distDir);
+    console.log('Files in dist directory:', files);
+    
+    // 检查assets目录
+    const assetsDir = path.join(distDir, 'assets');
+    if (fsSync.existsSync(assetsDir)) {
+      const assetsFiles = fsSync.readdirSync(assetsDir);
+      console.log('Files in assets directory:', assetsFiles);
+    } else {
+      console.error('Assets directory does not exist!');
+    }
+  } catch (err) {
+    console.error('Error reading dist directory:', err);
+  }
+  
+  // 添加更多调试信息
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('Page loaded successfully');
+    // 检查页面是否真的渲染了内容
+    mainWindow.webContents.executeJavaScript(`
+      console.log('Render process loaded');
+    `);
+  });
   
   mainWindow.loadURL(url);
-
-  // Open the DevTools for debugging
-  mainWindow.webContents.openDevTools();
   
-  // Check for updates when window is ready
+  // 监听页面加载失败事件
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('Failed to load URL:', validatedURL);
+    console.error('Error:', errorCode, errorDescription);
+    
+    // 显示错误对话框给用户
+    dialog.showMessageBox({
+      type: 'error',
+      title: '页面加载失败',
+      message: `无法加载页面: ${validatedURL}`,
+      detail: `错误代码: ${errorCode}\n错误描述: ${errorDescription}`,
+      buttons: ['确定']
+    });
+  });
+  
+  // 监听渲染进程崩溃事件
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('Render process crashed:', details);
+    dialog.showMessageBox({
+      type: 'error',
+      title: '渲染进程崩溃',
+      message: '应用程序渲染进程已崩溃',
+      detail: `原因: ${details.reason}\n退出代码: ${details.exitCode}`,
+      buttons: ['确定']
+    });
+  });
+  
+  // 监听控制台错误
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer] ${message} at ${sourceId}:${line}`);
+  });
+  
+  // 监听网络请求失败事件
+  mainWindow.webContents.on('did-fail-provisional-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error('Failed to load resource:', validatedURL);
+    console.error('Error:', errorCode, errorDescription);
+    console.error('Is main frame:', isMainFrame);
+  });
+
+  // 开发模式下打开DevTools
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
+  }
+  
   checkForUpdates();
 };
 
@@ -91,19 +161,12 @@ autoUpdater.on('update-downloaded', (info) => {
   });
 });
 
-// When there's an error with the update
 autoUpdater.on('error', (err) => {
   autoUpdater.logger.error('更新错误:', err.message);
 });
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.on('ready', createWindow);
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
@@ -111,15 +174,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
 
 // 获取应用数据目录
 const appDataPath = app.getPath('userData');
