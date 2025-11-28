@@ -25,22 +25,51 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
 
   // 获取已启用的AI服务
   useEffect(() => {
-    const savedConfigs = localStorage.getItem('apiConfigs');
-    if (savedConfigs) {
+    const loadEnabledServices = async () => {
       try {
-        const configs = JSON.parse(savedConfigs);
-        const enabled = configs
-          .filter((config: any) => config.enabled)
-          .map((config: any) => config.service);
-        setEnabledServices(enabled.length > 0 ? enabled : [AIService.Gemini]);
-        // 如果当前选择的服务未启用，切换到第一个启用的服务
-        if (enabled.length > 0 && !enabled.includes(selectedService)) {
-          setSelectedService(enabled[0]);
+        let savedConfigs = null;
+        // 检查是否在Electron环境中
+        if (window.electronAPI) {
+          // @ts-ignore - electronAPI is exposed in preload.js
+          savedConfigs = await window.electronAPI.readEnvFile();
+        }
+        
+        let configs = null;
+        if (savedConfigs) {
+          configs = JSON.parse(savedConfigs);
+        } else {
+          // 在开发模式下，使用localStorage
+          const oldConfigs = localStorage.getItem('apiConfigs');
+          if (oldConfigs) {
+            configs = JSON.parse(oldConfigs);
+          }
+        }
+        
+        if (configs) {
+          // 只包含已配置（apiKey不为空且enabled为true）的服务
+          const enabled = configs
+            .filter((config: any) => config.enabled && config.apiKey)
+            .map((config: any) => config.service);
+          setEnabledServices(enabled);
+          // 如果当前选择的服务未启用，切换到第一个启用的服务
+          if (enabled.length > 0 && !enabled.includes(selectedService)) {
+            setSelectedService(enabled[0]);
+          } else if (enabled.length === 0) {
+            // 如果没有启用的服务，清空选择
+            setSelectedService('' as AIService);
+          }
+        } else {
+          setEnabledServices([]);
+          setSelectedService('' as AIService);
         }
       } catch (error) {
-        console.error('Failed to parse API configs:', error);
+        console.error('Failed to load API configs:', error);
+        setEnabledServices([]);
+        setSelectedService('' as AIService);
       }
-    }
+    };
+    
+    loadEnabledServices();
   }, [selectedService]);
 
   const scrollToBottom = () => {
@@ -53,7 +82,7 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || !selectedService) return;
 
     const userMsg: ChatMessage = { role: 'user', content: input, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
@@ -102,19 +131,27 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
         {/* AI服务选择 */}
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-700">选择服务：</label>
-          <select
-            value={selectedService}
-            onChange={(e) => setSelectedService(e.target.value as AIService)}
-            className="px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-          >
-            {enabledServices.map(service => (
-              <option key={service} value={service}>
-                {service === AIService.Gemini && 'Google Gemini'}
-                {service === AIService.OpenAI && 'OpenAI'}
-                {service === AIService.Claude && 'Anthropic Claude'}
-              </option>
-            ))}
-          </select>
+          {enabledServices.length > 0 ? (
+            <select
+              value={selectedService}
+              onChange={(e) => setSelectedService(e.target.value as AIService)}
+              className="px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+            >
+              {enabledServices.map(service => (
+                <option key={service} value={service}>
+                  {service === AIService.Gemini && 'Google Gemini'}
+                  {service === AIService.OpenAI && 'OpenAI'}
+                  {service === AIService.Claude && 'Anthropic Claude'}
+                  {service === AIService.Wenxin && '百度文心一言'}
+                  {service === AIService.Tongyi && '阿里云通义千问'}
+                  {service === AIService.Doubao && '字节跳动豆包'}
+                  {service === AIService.Ollama && 'Ollama 本地模型'}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-sm text-amber-600 font-medium">未配置</span>
+          )}
         </div>
       </div>
 
@@ -159,23 +196,32 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
 
       {/* Input Area */}
       <div className="p-4 border-t border-slate-200 bg-slate-50">
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="请输入您的问题..."
-            className="flex-1 px-4 py-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !input.trim()}
-            className="px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-          >
-            {isLoading ? <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" /> : <Send size={20} />}
-          </button>
-        </form>
+        {enabledServices.length > 0 ? (
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="请输入您的问题..."
+              className="flex-1 px-4 py-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              disabled={isLoading || !selectedService}
+            />
+            <button
+              type="submit"
+              disabled={isLoading || !input.trim() || !selectedService}
+              className="px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+            >
+              {isLoading ? <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" /> : <Send size={20} />}
+            </button>
+          </form>
+        ) : (
+          <div className="flex items-center justify-center p-6 text-center">
+            <div className="max-w-md">
+              <p className="text-slate-500 mb-4">您还没有配置任何AI服务，请先在配置页面设置API密钥。</p>
+              <p className="text-sm text-slate-400">配置完成后，您将可以使用AI数据分析师功能。</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

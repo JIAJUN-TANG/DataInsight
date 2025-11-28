@@ -1,14 +1,26 @@
-const { app, BrowserWindow, dialog } = require('electron');
-const path = require('path');
-const { autoUpdater } = require('electron-updater');
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs/promises';
+import pkg from 'electron-updater';
+import log from 'electron-log';
+
+const { autoUpdater } = pkg;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
-  app.quit();
+try {
+  if (await import('electron-squirrel-startup')) {
+    app.quit();
+  }
+} catch (error) {
+  // Ignore if electron-squirrel-startup is not available
 }
 
 // Configure autoUpdater logging
-autoUpdater.logger = require('electron-log');
+autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
 
 const createWindow = () => {
@@ -18,15 +30,24 @@ const createWindow = () => {
     height: 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      // 修复contextBridge错误，启用contextIsolation
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
     },
     icon: path.join(__dirname, 'icon.png'),
   });
 
-  // and load the index.html of the app.
-  mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
+  // 在开发模式下使用vite服务器，生产模式下加载dist目录
+  const isDev = process.env.NODE_ENV === 'development';
+  const url = isDev 
+    ? 'http://localhost:3000' 
+    : `file://${path.join(__dirname, 'dist/index.html')}`;
+  
+  mainWindow.loadURL(url);
 
-  // Open the DevTools.
-  // mainWindow.webContents.openDevTools();
+  // Open the DevTools for debugging
+  mainWindow.webContents.openDevTools();
   
   // Check for updates when window is ready
   checkForUpdates();
@@ -39,7 +60,6 @@ function checkForUpdates() {
 }
 
 // Listen for update check requests from renderer process
-const { ipcMain } = require('electron');
 ipcMain.on('check-for-updates', () => {
   checkForUpdates();
 });
@@ -100,3 +120,41 @@ app.on('activate', () => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
+
+// 获取应用数据目录
+const appDataPath = app.getPath('userData');
+const envFilePath = path.join(appDataPath, '.env');
+
+// 读取env文件
+ipcMain.handle('read-env-file', async () => {
+  try {
+    const data = await fs.readFile(envFilePath, 'utf8');
+    return data;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      // 文件不存在，返回空字符串
+      return '';
+    }
+    throw error;
+  }
+});
+
+// 写入env文件
+ipcMain.handle('write-env-file', async (event, data) => {
+  try {
+    await fs.writeFile(envFilePath, data, 'utf8');
+    return true;
+  } catch (error) {
+    throw error;
+  }
+});
+
+// 检查env文件是否存在
+ipcMain.handle('check-env-file', async () => {
+  try {
+    await fs.access(envFilePath);
+    return true;
+  } catch (error) {
+    return false;
+  }
+});

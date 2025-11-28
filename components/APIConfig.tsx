@@ -3,15 +3,12 @@ import { Key, Save, Check } from 'lucide-react';
 
 // AI服务类型
 export enum AIService {
-  // 国际大模型
   Gemini = 'gemini',
   OpenAI = 'openai',
   Claude = 'claude',
-  // 国内大模型
   Wenxin = 'wenxin',
   Tongyi = 'tongyi',
   Doubao = 'doubao',
-  // 本地模型
   Ollama = 'ollama'
 }
 
@@ -26,7 +23,6 @@ interface APIConfig {
 const APIConfig: React.FC = () => {
   // 状态管理
   const [configs, setConfigs] = useState<APIConfig[]>([
-    // 国际大模型
     {
       service: AIService.Gemini,
       apiKey: '',
@@ -45,7 +41,6 @@ const APIConfig: React.FC = () => {
       endpoint: 'https://api.anthropic.com/v1',
       enabled: true
     },
-    // 国内大模型
     {
       service: AIService.Wenxin,
       apiKey: '',
@@ -77,6 +72,8 @@ const APIConfig: React.FC = () => {
   // 当前选择的大模型
   const [selectedOnlineService, setSelectedOnlineService] = useState<AIService>(AIService.Gemini);
   const [selectedLocalService, setSelectedLocalService] = useState<AIService>(AIService.Ollama);
+  // Ollama运行状态
+  const [ollamaRunning, setOllamaRunning] = useState<boolean | null>(null);
   
   // 获取已配置和未配置的大模型
   const getConfiguredModels = () => {
@@ -87,30 +84,121 @@ const APIConfig: React.FC = () => {
     return configs.filter(config => !config.apiKey || !config.enabled);
   };
 
-  // 从localStorage加载配置
-  useEffect(() => {
-    const savedConfigs = localStorage.getItem('apiConfigs');
-    if (savedConfigs) {
-      try {
-        setConfigs(JSON.parse(savedConfigs));
-      } catch (error) {
-        console.error('Failed to parse API configs:', error);
+  // 检测Ollama是否在运行
+  const checkOllamaStatus = async () => {
+    try {
+      const ollamaConfig = configs.find(c => c.service === AIService.Ollama);
+      if (ollamaConfig) {
+        // 使用AbortController实现超时
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        
+        const response = await fetch(`${ollamaConfig.endpoint}/models`, {
+          method: 'GET',
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        setOllamaRunning(response.ok);
+        // 如果Ollama在运行，自动启用它
+        if (response.ok && !ollamaConfig.enabled) {
+          updateConfig(configs.findIndex(c => c.service === AIService.Ollama), { enabled: true });
+        }
       }
+    } catch (error) {
+      setOllamaRunning(false);
     }
+  };
+
+  // 从配置源加载配置
+  useEffect(() => {
+    const loadConfigs = async () => {
+      try {
+        // 检查是否在Electron环境中
+        if (window.electronAPI) {
+          // @ts-ignore - electronAPI is exposed in preload.js
+          const savedConfigs = await window.electronAPI.readEnvFile();
+          if (savedConfigs) {
+            setConfigs(JSON.parse(savedConfigs));
+          }
+        } else {
+          // 在开发模式下，使用localStorage
+          const oldConfigs = localStorage.getItem('apiConfigs');
+          if (oldConfigs) {
+            setConfigs(JSON.parse(oldConfigs));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load API configs:', error);
+        // 尝试从localStorage加载旧配置
+        const oldConfigs = localStorage.getItem('apiConfigs');
+        if (oldConfigs) {
+          try {
+            setConfigs(JSON.parse(oldConfigs));
+          } catch (parseError) {
+            console.error('Failed to parse old API configs:', parseError);
+          }
+        }
+      }
+    };
+    
+    loadConfigs();
   }, []);
 
-  // 保存配置到localStorage
-  const saveConfigs = () => {
+  // 检测Ollama状态
+  useEffect(() => {
+    checkOllamaStatus();
+    // 定期检测Ollama状态
+    const interval = setInterval(checkOllamaStatus, 5000);
+    return () => clearInterval(interval);
+  }, [configs]);
+
+  // 保存配置到配置源
+  const saveConfigs = async () => {
     setIsSaving(true);
-    localStorage.setItem('apiConfigs', JSON.stringify(configs));
-    
-    // 显示保存成功提示
-    setSaveSuccess(true);
-    setTimeout(() => {
-      setSaveSuccess(false);
-    }, 2000);
-    
-    setIsSaving(false);
+    try {
+      // 检查当前选中的服务配置是否完整
+      const currentConfig = selectedLocalService === AIService.Ollama 
+        ? configs.find(c => c.service === selectedLocalService)
+        : configs.find(c => c.service === selectedOnlineService);
+      
+      if (currentConfig) {
+        // 检查配置是否完整
+        if (currentConfig.service !== AIService.Ollama && !currentConfig.apiKey) {
+          alert('请输入API密钥');
+          setIsSaving(false);
+          return;
+        }
+        
+        if (!currentConfig.endpoint) {
+          alert('请输入端点URL');
+          setIsSaving(false);
+          return;
+        }
+      }
+      
+      // 检查是否在Electron环境中
+      if (window.electronAPI) {
+        // @ts-ignore - electronAPI is exposed in preload.js
+        await window.electronAPI.writeEnvFile(JSON.stringify(configs));
+      } else {
+        // 在开发模式下，使用localStorage
+        localStorage.setItem('apiConfigs', JSON.stringify(configs));
+      }
+      
+      // 显示保存成功提示
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to save API configs:', error);
+      // 尝试保存到localStorage作为备份
+      localStorage.setItem('apiConfigs', JSON.stringify(configs));
+      alert('保存失败，请检查网络或权限设置');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // 更新单个配置
@@ -146,27 +234,6 @@ const APIConfig: React.FC = () => {
 
   return (
     <div className="space-y-6 relative">
-      {/* 页面标题和保存按钮 */}
-      <div className="flex justify-between items-center">
-        <button
-          onClick={saveConfigs}
-          disabled={isSaving}
-          className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isSaving ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              <span>保存中...</span>
-            </>
-          ) : (
-            <>
-              <Save size={16} />
-              <span>保存配置</span>
-            </>
-          )}
-        </button>
-      </div>
-      
       {/* 保存成功提示窗 */}
       {saveSuccess && (
         <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-6 py-3 rounded-lg shadow-lg flex items-center space-x-2 z-50 animate-fade-in">
@@ -180,7 +247,7 @@ const APIConfig: React.FC = () => {
         <h3 className="text-lg font-semibold text-slate-800 mb-4">配置状态</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <h4 className="text-md font-medium text-green-600 mb-2">已配置的大模型</h4>
+            <h4 className="text-md font-medium text-green-600 mb-2">已启用的大模型</h4>
             {getConfiguredModels().length > 0 ? (
               <ul className="space-y-2">
                 {getConfiguredModels().map(config => (
@@ -191,7 +258,7 @@ const APIConfig: React.FC = () => {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-slate-500">暂无已配置的大模型</p>
+              <p className="text-sm text-slate-500">暂无已启用的大模型</p>
             )}
           </div>
           <div>
@@ -291,6 +358,27 @@ const APIConfig: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                   />
                 </div>
+                
+                {/* 保存按钮 */}
+                <div className="pt-2">
+                  <button
+                    onClick={() => saveConfigs()}
+                    disabled={isSaving}
+                    className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <span>保存中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        <span>保存配置</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             );
           })()}
@@ -325,6 +413,28 @@ const APIConfig: React.FC = () => {
             
             return (
               <div className="space-y-4">
+                {/* Ollama状态提示 */}
+                {selectedLocalService === AIService.Ollama && (
+                  <div className={`p-3 rounded-lg text-sm ${ollamaRunning ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-amber-50 border border-amber-200 text-amber-700'}`}>
+                    {ollamaRunning ? (
+                      <div className="flex items-center">
+                        <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
+                        <span>已检测到Ollama服务正在运行</span>
+                      </div>
+                    ) : ollamaRunning === false ? (
+                      <div className="flex items-center">
+                        <div className="w-2 h-2 rounded-full bg-amber-500 mr-2"></div>
+                        <span>未检测到Ollama服务，请先<a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline ml-1">安装Ollama</a></span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-500 mr-2"></div>
+                        <span>正在检测Ollama服务...</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
                 {/* 启用开关 */}
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-slate-700">
@@ -353,6 +463,27 @@ const APIConfig: React.FC = () => {
                     placeholder="Ollama服务端点URL，默认：http://localhost:11434/v1"
                     className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                   />
+                </div>
+                
+                {/* 保存按钮 */}
+                <div className="pt-2">
+                  <button
+                    onClick={() => saveConfigs()}
+                    disabled={isSaving}
+                    className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <span>保存中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        <span>保存配置</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             );
