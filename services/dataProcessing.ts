@@ -73,15 +73,35 @@ const parseJSON = (file: File): Promise<DataRow[]> => {
   });
 };
 
-const parseExcel = (file: File): Promise<DataRow[]> => {
+export const getExcelSheets = async (file: File): Promise<string[]> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
+        resolve(workbook.SheetNames);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsArrayBuffer(file);
+  });
+};
+
+export const parseExcelSheet = async (file: File, sheetName: string): Promise<DataRow[]> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
         const sheet = workbook.Sheets[sheetName];
+        if (!sheet) {
+          reject(new Error(`Sheet ${sheetName} not found`));
+          return;
+        }
         const json = XLSX.utils.sheet_to_json(sheet) as DataRow[];
         resolve(json);
       } catch (err) {
@@ -93,56 +113,82 @@ const parseExcel = (file: File): Promise<DataRow[]> => {
   });
 };
 
-const parseSQLite = async (file: File): Promise<DataRow[]> => {
+const parseExcel = async (file: File): Promise<DataRow[]> => {
+  const sheets = await getExcelSheets(file);
+  if (sheets.length === 0) {
+    throw new Error("No sheets found in the Excel file.");
+  }
+  return parseExcelSheet(file, sheets[0]);
+};
+
+export const getSQLiteTables = async (file: File): Promise<string[]> => {
   try {
     const SQL = await initSqlJs({
-        // Locate the WASM file from a stable CDN matching the version
-        locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.11.0/sql-wasm.wasm`
+      locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.11.0/sql-wasm.wasm`
     });
-    
+
     const buffer = await file.arrayBuffer();
     const db = new SQL.Database(new Uint8Array(buffer));
-    
-    // Find valid user tables (exclude internal sqlite tables)
+
     const result = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-    
+    db.close();
+
     if (result.length === 0 || result[0].values.length === 0) {
-        throw new Error("No tables found in the SQLite database.");
+      return [];
     }
 
-    // Default to the first table found
-    const tableName = result[0].values[0][0];
-    
-    // Fetch all data from the table
-    // Note: 'exec' returns an array of result sets. We just need the first one.
+    return result[0].values.map(v => v[0] as string);
+  } catch (err) {
+    console.error("Error getting SQLite tables:", err);
+    throw new Error("Failed to read SQLite file.");
+  }
+};
+
+export const parseSQLiteTable = async (file: File, tableName: string): Promise<DataRow[]> => {
+  try {
+    const SQL = await initSqlJs({
+      locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.11.0/sql-wasm.wasm`
+    });
+
+    const buffer = await file.arrayBuffer();
+    const db = new SQL.Database(new Uint8Array(buffer));
+
     const queryRes = db.exec(`SELECT * FROM "${tableName}"`);
-    
+
     if (queryRes.length === 0) {
-        db.close();
-        return [];
+      db.close();
+      return [];
     }
 
     const columns = queryRes[0].columns;
     const values = queryRes[0].values;
-    
+
     db.close();
 
-    // Map to DataRow format
     return values.map((row: any[]) => {
-        const rowObj: DataRow = {};
-        columns.forEach((col, index) => {
-            rowObj[col] = row[index];
-        });
-        return rowObj;
+      const rowObj: DataRow = {};
+      columns.forEach((col, index) => {
+        rowObj[col] = row[index];
+      });
+      return rowObj;
     });
 
   } catch (err) {
-      console.error("Error parsing SQLite file:", err);
-      throw new Error("Failed to read SQLite file. It might be encrypted or corrupted.");
+    console.error("Error parsing SQLite table:", err);
+    throw new Error(`Failed to read table ${tableName} from SQLite file.`);
   }
 };
 
-const analyzeColumns = (rows: DataRow[]): ColumnInfo[] => {
+const parseSQLite = async (file: File): Promise<DataRow[]> => {
+  const tables = await getSQLiteTables(file);
+  if (tables.length === 0) {
+    throw new Error("No tables found in the SQLite database.");
+  }
+  // Default to the first table
+  return parseSQLiteTable(file, tables[0]);
+};
+
+export const analyzeColumns = (rows: DataRow[]): ColumnInfo[] => {
   if (rows.length === 0) return [];
   const keys = Object.keys(rows[0]);
 
@@ -150,7 +196,7 @@ const analyzeColumns = (rows: DataRow[]): ColumnInfo[] => {
     // Determine type based on first non-null value
     let type = ColumnType.Unknown;
     const sampleValues = rows.slice(0, 100).map(r => r[key]).filter(v => v !== null && v !== undefined);
-    
+
     if (sampleValues.length > 0) {
       const testVal = sampleValues[0];
       if (typeof testVal === 'number') type = ColumnType.Number;
@@ -158,10 +204,10 @@ const analyzeColumns = (rows: DataRow[]): ColumnInfo[] => {
       else if (typeof testVal === 'string') {
         // Simple date check
         if (!isNaN(Date.parse(testVal)) && testVal.length > 5) {
-            // Very loose date check, defaulting to string to avoid false positives often
-             type = ColumnType.String; 
+          // Very loose date check, defaulting to string to avoid false positives often
+          type = ColumnType.String;
         } else {
-            type = ColumnType.String;
+          type = ColumnType.String;
         }
       }
     }
@@ -175,11 +221,11 @@ const analyzeColumns = (rows: DataRow[]): ColumnInfo[] => {
 const calculateColumnStats = (rows: DataRow[], key: string, type: ColumnType): ColumnStats => {
   const values = rows.map(r => r[key]).filter(v => v !== null && v !== undefined);
   const nullCount = rows.length - values.length;
-  
+
   if (type === ColumnType.Number) {
     const numValues = values as number[];
     if (numValues.length === 0) return { nullCount, uniqueCount: 0 };
-    
+
     numValues.sort((a, b) => a - b);
     const sum = numValues.reduce((a, b) => a + b, 0);
     const min = numValues[0];
@@ -194,7 +240,7 @@ const calculateColumnStats = (rows: DataRow[], key: string, type: ColumnType): C
     // String/Categorical stats
     const strValues = values.map(String);
     const uniqueCount = new Set(strValues).size;
-    
+
     // Frequency map for top values
     const counts: Record<string, number> = {};
     strValues.forEach(v => counts[v] = (counts[v] || 0) + 1);
