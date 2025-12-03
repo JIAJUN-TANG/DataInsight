@@ -45,7 +45,8 @@
         "owner": "JIAJUN-TANG",
         "repo": "DataInsight"
       }
-    ]
+    ],
+    "npmRebuild": false
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
