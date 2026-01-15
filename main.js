@@ -2,6 +2,9 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
+import { spawn } from 'child_process';
+import net from 'net';
+
 import * as pkg from 'electron-updater';
 import log from 'electron-log';
 
@@ -13,6 +16,69 @@ const { autoUpdater } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Python process variable
+let pythonProcess = null;
+
+function checkPortInUse(port) {
+  return new Promise((resolve) => {
+    const tester = net.createServer()
+      .once('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      })
+      .once('listening', () => {
+        tester.close();
+        resolve(false);
+      })
+      .listen(port);
+  });
+}
+
+async function createPythonProcess() {
+  const portInUse = await checkPortInUse(4321);
+  if (portInUse && !app.isPackaged) {
+    console.log('Port 4321 is already in use. Assuming external Python backend is running.');
+    return;
+  }
+
+  let scriptPath = path.join(__dirname, 'python_backend/api.py');
+  let pythonExecutable = 'python3'; // Default for dev
+
+  if (app.isPackaged) {
+    pythonExecutable = path.join(process.resourcesPath, 'python_backend/dist/api');
+    scriptPath = null;
+  }
+
+  const args = scriptPath ? [scriptPath] : [];
+
+  console.log(`Starting Python process: ${pythonExecutable} ${args.join(' ')}`);
+
+  pythonProcess = spawn(pythonExecutable, args);
+
+  pythonProcess.stdout.on('data', (data) => {
+    console.log(`Python stdout: ${data}`);
+  });
+
+  pythonProcess.stderr.on('data', (data) => {
+    console.error(`Python stderr: ${data}`);
+  });
+
+  pythonProcess.on('close', (code) => {
+    console.log(`Python process exited with code ${code}`);
+  });
+}
+
+function killPythonProcess() {
+  if (pythonProcess) {
+    console.log('Killing Python process...');
+    pythonProcess.kill();
+    pythonProcess = null;
+  }
+}
 
 // 动态加载segment并处理词典
 async function loadSegment() {
@@ -318,12 +384,20 @@ async function initializeApp() {
   });
 
   // --- App事件监听 ---
-  app.on('ready', createWindow);
+  app.on('ready', async () => {
+    await createPythonProcess();
+    createWindow();
+  });
 
   app.on('window-all-closed', () => {
+    killPythonProcess();
     if (process.platform !== 'darwin') {
       app.quit();
     }
+  });
+
+  app.on('will-quit', () => {
+    killPythonProcess();
   });
 
   app.on('activate', () => {

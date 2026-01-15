@@ -80,7 +80,7 @@ function App() {
               // @ts-ignore - electronAPI is exposed from preload.js
               window.electronAPI?.checkForUpdates?.();
             }}
-            className="flex items-center space-x-2 px-4 py-2 w-full bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            className="flex items-center space-x-2 px-4 py-2 w-full bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors cursor-pointer"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
               <circle cx="12" cy="12" r="10"></circle>

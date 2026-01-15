@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Dataset, ChatMessage } from '../types';
-import { generateDataInsights } from '../services/geminiService';
-import { Send, Bot, User, Sparkles } from 'lucide-react';
+import { sendAIRequest } from '../services/AIService';
+import { Send, Bot, User, Sparkles, Settings } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { AIService } from './APIConfig';
+import { AIModelConfig } from './APIConfig';
 
 interface AIChatProps {
   dataset: Dataset;
@@ -12,65 +12,82 @@ interface AIChatProps {
 const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
-      {
-          role: 'model',
-          content: `您好！我已经读取了 **${dataset.name}** 数据集。我可以帮助您发现数据中的见解、检测模式或总结数据。您想知道什么？`,
-          timestamp: Date.now()
-      }
+    {
+      role: 'model',
+      content: `您好！我已经读取了 **${dataset.name}** 数据集。我可以帮助您发现数据中的见解、检测模式或总结数据。您想知道什么？`,
+      timestamp: Date.now()
+    }
   ]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedService, setSelectedService] = useState<AIService>(AIService.Gemini);
-  const [enabledServices, setEnabledServices] = useState<AIService[]>([AIService.Gemini]);
+  const [configs, setConfigs] = useState<AIModelConfig[]>([]);
+  const [selectedConfigId, setSelectedConfigId] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 获取已启用的AI服务
+  // Load configured services
   useEffect(() => {
-    const loadEnabledServices = async () => {
+    const loadConfigs = async () => {
       try {
-        let savedConfigs = null;
-        // 检查是否在Electron环境中
+        let savedConfigs: any = null;
         if (window.electronAPI) {
-          // @ts-ignore - electronAPI is exposed in preload.js
+          // @ts-ignore
           savedConfigs = await window.electronAPI.readEnvFile();
+        } else {
+          savedConfigs = localStorage.getItem('apiConfigs');
         }
-        
-        let configs = null;
+
         if (savedConfigs) {
-          configs = JSON.parse(savedConfigs);
-        } else {
-          // 在开发模式下，使用localStorage
-          const oldConfigs = localStorage.getItem('apiConfigs');
-          if (oldConfigs) {
-            configs = JSON.parse(oldConfigs);
+          // Regex to extract the value of API_CONFIGS
+          // Captures content inside quotes or until end of line
+          const match = savedConfigs.match(/API_CONFIGS\s*=\s*(?:'([^']*)'|"([^"]*)"|([^\n\r]*))/);
+
+          let configString = '';
+          if (match) {
+            // match[1] is single quoted content
+            // match[2] is double quoted content
+            // match[3] is unquoted content
+            configString = match[1] || match[2] || match[3] || '';
+          } else if (savedConfigs.trim().startsWith('[')) {
+            // Fallback: assume the whole string is the JSON array if not in KEY=VALUE format
+            configString = savedConfigs;
           }
-        }
-        
-        if (configs) {
-          // 只包含已配置（enabled为true）的服务
-          const enabled = configs
-            .filter((config: any) => config.enabled && (config.service === AIService.Ollama || config.apiKey))
-            .map((config: any) => config.service);
-          setEnabledServices(enabled);
-          // 如果当前选择的服务未启用，切换到第一个启用的服务
-          if (enabled.length > 0 && !enabled.includes(selectedService)) {
-            setSelectedService(enabled[0]);
-          } else if (enabled.length === 0) {
-            // 如果没有启用的服务，清空选择
-            setSelectedService('' as AIService);
+
+          if (configString) {
+            configString = configString.trim(); // Ensure no leading/trailing whitespace
           }
-        } else {
-          setEnabledServices([]);
-          setSelectedService('' as AIService);
+          const parsed = JSON.parse(configString);
+          // Filter enabled configs
+          const enabled = Array.isArray(parsed) ? parsed.filter((c: any) => c.enabled) : [];
+
+          // Migration/Compatibility check if simpler format
+          // Assuming new format from APIConfig refactor
+          setConfigs(enabled);
+
+          if (enabled.length > 0) {
+            // Default to first one or previously selected if possible
+            setSelectedConfigId(enabled[0].id);
+          }
         }
       } catch (error) {
         console.error('Failed to load API configs:', error);
-        setEnabledServices([]);
-        setSelectedService('' as AIService);
+        // 尝试从localStorage读取作为备选方案
+        const oldConfigs = localStorage.getItem('apiConfigs');
+        if (oldConfigs) {
+          try {
+            const parsed = JSON.parse(oldConfigs);
+            const enabled = Array.isArray(parsed) ? parsed.filter((c: any) => c.enabled) : [];
+            setConfigs(enabled);
+            if (enabled.length > 0) {
+              setSelectedConfigId(enabled[0].id);
+            }
+          } catch (localError) {
+            console.error('Failed to load from localStorage as fallback:', localError);
+          }
+        }
       }
     };
-    
-    loadEnabledServices();
-  }, [selectedService]);
+
+    loadConfigs();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -82,7 +99,13 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading || !selectedService) return;
+    if (!input.trim() || isLoading || !selectedConfigId) return;
+
+    const selectedConfig = configs.find(c => c.id === selectedConfigId);
+    if (!selectedConfig) {
+      alert("Selected service configuration not found.");
+      return;
+    }
 
     const userMsg: ChatMessage = { role: 'user', content: input, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
@@ -94,63 +117,97 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
     setMessages(prev => [...prev, aiMsgPlaceholder]);
 
     try {
-        // We pass the history excluding the placeholder
-        const historyForApi = [...messages, userMsg];
-        const stream = await generateDataInsights(dataset, userMsg.content, historyForApi, selectedService);
-        
-        let fullText = '';
-        for await (const chunk of stream) {
-            fullText += chunk;
-            setMessages(prev => {
-                const newArr = [...prev];
-                newArr[newArr.length - 1] = { ...newArr[newArr.length - 1], content: fullText };
-                return newArr;
-            });
-        }
-    } catch (error) {
-        console.error("AI Error:", error);
+      // We pass the history excluding the placeholder
+      const historyForApi = [...messages, userMsg];
+
+      const columnsSummary = dataset.columns.map(c => {
+        let statsStr = '';
+        if (c.stats?.mean) statsStr += `, Mean: ${c.stats.mean.toFixed(2)}`;
+        if (c.stats?.topValues) statsStr += `, Top Values: ${c.stats.topValues.map(t => `${t.value}(${t.count})`).join(', ')}`;
+        return `- ${c.name} (${c.type})${statsStr}`;
+      }).join('\n');
+
+      const sampleRows = JSON.stringify(dataset.rows.slice(0, 5));
+
+      const systemInstruction = `
+You are an expert Data Scientist assistant inside a web application.
+You are analyzing a dataset named "${dataset.name}" with ${dataset.rowCount} rows.
+
+Here is the schema and summary statistics:
+${columnsSummary}
+
+Here are the first 5 rows of data:
+${sampleRows}
+
+Your goal is to answer the user's questions about this data, provide insights, suggest visualizations (text-based descriptions), and help them understand the trends.
+Keep answers concise, professional, and formatted with Markdown. 
+Use tables if comparing values.
+Do not ask the user to execute code. You are providing the analysis directly.
+      `;
+
+      // Map 'model' role to 'assistant' for API compatibility
+      // We pass the history excluding the placeholder
+
+
+      const stream = await sendAIRequest(selectedConfig, systemInstruction, historyForApi.map(m => ({
+        role: m.role === 'model' ? 'assistant' : m.role,
+        content: m.content
+      })));
+
+      let fullText = '';
+      for await (const chunk of stream) {
+        fullText += chunk;
         setMessages(prev => {
-            const newArr = [...prev];
-            newArr[newArr.length - 1] = { ...newArr[newArr.length - 1], content: "Sorry, I encountered an error while analyzing the data. Please check your API key." };
-            return newArr;
+          const newArr = [...prev];
+          newArr[newArr.length - 1] = { ...newArr[newArr.length - 1], content: fullText };
+          return newArr;
         });
+      }
+    } catch (error: any) {
+      console.error("AI Error:", error);
+      setMessages(prev => {
+        const newArr = [...prev];
+        newArr[newArr.length - 1] = { ...newArr[newArr.length - 1], content: `Error: ${error.message || 'Unknown error occurred.'}` };
+        return newArr;
+      });
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
     <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        {/* Header */}
+      {/* Header */}
       <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div className="flex items-center text-indigo-700">
           <Sparkles size={20} className="mr-2" />
           <h3 className="font-semibold">AI 数据分析师</h3>
         </div>
-        
-        {/* AI服务选择 */}
+
+        {/* Service Selector */}
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-slate-700">选择服务：</label>
-          {enabledServices.length > 0 ? (
-            <select
-              value={selectedService}
-              onChange={(e) => setSelectedService(e.target.value as AIService)}
-              className="px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-            >
-              {enabledServices.map(service => (
-                <option key={service} value={service}>
-                  {service === AIService.Gemini && 'Gemini'}
-                  {service === AIService.OpenAI && 'ChatGPT'}
-                  {service === AIService.Claude && 'Claude'}
-                  {service === AIService.Wenxin && '文心一言'}
-                  {service === AIService.Tongyi && 'Qwen'}
-                  {service === AIService.Doubao && '豆包'}
-                  {service === AIService.Ollama && 'Ollama'}
-                </option>
-              ))}
-            </select>
+          {configs.length > 0 ? (
+            <div className="relative">
+              <select
+                value={selectedConfigId}
+                onChange={(e) => setSelectedConfigId(e.target.value)}
+                className="pl-3 pr-8 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white appearance-none cursor-pointer"
+              >
+                {configs.map(config => (
+                  <option key={config.id} value={config.id}>
+                    {config.name} ({config.model})
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                <Settings size={14} />
+              </div>
+            </div>
           ) : (
-            <span className="text-sm text-amber-600 font-medium">未配置</span>
+            <span className="text-sm text-amber-600 font-medium flex items-center">
+              <div className="w-2 h-2 rounded-full bg-amber-500 mr-2"></div>
+              无可用服务，请先配置服务。
+            </span>
           )}
         </div>
       </div>
@@ -160,32 +217,30 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`flex max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 ${
-                  msg.role === 'user' ? 'bg-indigo-100 text-indigo-600 ml-3' : 'bg-emerald-100 text-emerald-600 mr-3'
-              }`}>
+              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 ${msg.role === 'user' ? 'bg-indigo-100 text-indigo-600 ml-3' : 'bg-emerald-100 text-emerald-600 mr-3'
+                }`}>
                 {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
               </div>
-              
-              <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
-                  msg.role === 'user' 
-                  ? 'bg-indigo-600 text-white rounded-tr-none' 
-                  : 'bg-slate-100 text-slate-800 rounded-tl-none'
-              }`}>
+
+              <div className={`p-4 rounded-2xl text-sm leading-relaxed ${msg.role === 'user'
+                ? 'bg-indigo-600 text-white rounded-tr-none'
+                : 'bg-slate-100 text-slate-800 rounded-tl-none'
+                }`}>
                 {msg.role === 'model' ? (
-                     <ReactMarkdown 
-                        components={{
-                            table: ({node, ...props}) => <div className="overflow-x-auto my-2"><table className="min-w-full divide-y divide-slate-300 border border-slate-300" {...props} /></div>,
-                            th: ({node, ...props}) => <th className="px-3 py-2 bg-slate-200 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider" {...props} />,
-                            td: ({node, ...props}) => <td className="px-3 py-2 border-t border-slate-200 text-sm" {...props} />,
-                            p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                            ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2" {...props} />,
-                            ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2" {...props} />
-                        }}
-                     >
-                        {msg.content}
-                     </ReactMarkdown>
+                  <ReactMarkdown
+                    components={{
+                      table: ({ node, ...props }) => <div className="overflow-x-auto my-2"><table className="min-w-full divide-y divide-slate-300 border border-slate-300" {...props} /></div>,
+                      th: ({ node, ...props }) => <th className="px-3 py-2 bg-slate-200 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider" {...props} />,
+                      td: ({ node, ...props }) => <td className="px-3 py-2 border-t border-slate-200 text-sm" {...props} />,
+                      p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                      ul: ({ node, ...props }) => <ul className="list-disc ml-4 mb-2" {...props} />,
+                      ol: ({ node, ...props }) => <ol className="list-decimal ml-4 mb-2" {...props} />
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
                 ) : (
-                    msg.content
+                  msg.content
                 )}
               </div>
             </div>
@@ -196,19 +251,19 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
 
       {/* Input Area */}
       <div className="p-4 border-t border-slate-200 bg-slate-50">
-        {enabledServices.length > 0 ? (
+        {configs.length > 0 ? (
           <form onSubmit={handleSubmit} className="flex gap-2">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="请输入您的问题..."
+              placeholder="关于您的数据有什么问题吗？"
               className="flex-1 px-4 py-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-              disabled={isLoading || !selectedService}
+              disabled={isLoading || !selectedConfigId}
             />
             <button
               type="submit"
-              disabled={isLoading || !input.trim() || !selectedService}
+              disabled={isLoading || !input.trim() || !selectedConfigId}
               className="px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
             >
               {isLoading ? <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" /> : <Send size={20} />}
@@ -217,8 +272,7 @@ const AIChat: React.FC<AIChatProps> = ({ dataset }) => {
         ) : (
           <div className="flex items-center justify-center p-6 text-center">
             <div className="max-w-md">
-              <p className="text-slate-500 mb-4">您还没有配置任何AI服务，请先在配置页面设置API密钥。</p>
-              <p className="text-sm text-slate-400">配置完成后，您将可以使用AI数据分析师功能。</p>
+              <p className="text-slate-500 mb-4">无可用服务，请先配置服务。</p>
             </div>
           </div>
         )}
