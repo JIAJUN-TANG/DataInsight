@@ -49,8 +49,8 @@ async function createPythonProcess() {
   let pythonExecutable = 'python3'; // Default for dev
 
   if (app.isPackaged) {
-    pythonExecutable = path.join(process.resourcesPath, 'python_backend/dist/api');
-    scriptPath = null;
+    pythonExecutable = 'python'; // 使用系统 Python
+    scriptPath = path.join(process.resourcesPath, 'python_backend/api.py');
   }
 
   const args = scriptPath ? [scriptPath] : [];

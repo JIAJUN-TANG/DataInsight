@@ -24,7 +24,8 @@
     "files": [
       "dist/**/*",
       "main.js",
-      "preload.js"
+      "preload.js",
+      "python_backend/**/*"
     ],
     "asar": false,
     "mac": {
